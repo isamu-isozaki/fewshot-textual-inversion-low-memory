@@ -1,0 +1,12 @@
+.venv/
+.cache/
+__pycache__/
+finetune_checkpoints/wandb/
+glide_model_cache/
+.vscode/
+outputs/
+wandb/
+finetune_checkpoints/
+docker_child/
+chi_painting*
+current_prediction.png
