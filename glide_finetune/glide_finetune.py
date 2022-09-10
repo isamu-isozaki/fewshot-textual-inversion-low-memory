@@ -4,13 +4,13 @@ from typing import Tuple
 import torch as th
 from glide_text2im.respace import SpacedDiffusion
 from glide_text2im.text2im_model import Text2ImUNet
-from wandb import wandb
+import wandb
 import gc
 from glide_finetune import glide_util, train_util
 def base_train_step(
     glide_model: Text2ImUNet,
     glide_diffusion: SpacedDiffusion,
-    batch: Tuple[th.Tensor, th.Tensor, th.Tensor],
+    batch: dict,
     device: str,
 ):
     """
@@ -24,7 +24,9 @@ def base_train_step(
         Returns:
             The loss.
     """
-    tokens, masks, reals, img_masks = [x.to(device) for x in batch]
+    tokens, masks, reals = [x.to(device) for x in batch]
+    img_masks = None
+    inpainting=False
     if not(img_masks is None):
         inpainting = True
     timesteps = th.randint(
@@ -109,6 +111,7 @@ def upsample_train_step(
 
 
 def run_glide_finetune_epoch(
+    placeholder_token_id,
     glide_model: Text2ImUNet,
     glide_diffusion: SpacedDiffusion,
     glide_options: dict,
@@ -150,15 +153,10 @@ def run_glide_finetune_epoch(
         )
         gc.collect()
         accumulated_loss.backward()
-        # th.nn.utils.clip_grad_norm_(glide_model.parameters(), 1)
-        # print('number of invalid gradients')
-        # print(len([th.any(th.isnan(x.grad)) for x in glide_model.parameters() if (x.requires_grad and th.any(th.isnan(x.grad)))]))
-        # gc.collect()
-        # for name, param in glide_model.named_parameters():
-        #     if param.requires_grad:
-        #         print(name)
-        #         print(th.max(abs(param.grad)))
-
+        grads = glide_model.token_embedding.weight.grad
+        # Get the index for tokens that we want to zero the grads for
+        index_grads_to_zero = th.arange(glide_model.tokenizer.n_vocab) != placeholder_token_id
+        grads.data[index_grads_to_zero, :] = grads.data[index_grads_to_zero, :].fill_(0)
         optimizer.step()
         gc.collect()
         glide_model.zero_grad()

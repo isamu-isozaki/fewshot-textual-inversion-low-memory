@@ -10,3 +10,4 @@ finetune_checkpoints/
 docker_child/
 chi_painting*
 current_prediction.png
+glide_checkpoints

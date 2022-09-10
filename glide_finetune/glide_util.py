@@ -64,6 +64,8 @@ def load_model(
         glide_model.token_embedding.requires_grad_(False)
         glide_model.padding_embedding.requires_grad_(False)
         glide_model.positional_embedding.requires_grad_(False)
+        glide_model.time_embed.requires_grad_(False)
+        glide_model.final_ln.requires_grad_(False)
     if freeze_diffusion:
         glide_model.out.requires_grad_(False)
         glide_model.input_blocks.requires_grad_(False)

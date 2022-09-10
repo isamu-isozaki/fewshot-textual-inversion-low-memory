@@ -19,6 +19,8 @@ from glide_finetune.wds_loader import glide_wds_loader
 # from accelerate.utils import set_seed
 
 def run_glide_finetune(
+    placeholder_token="<cat_toy>",
+    initializer_token="toy",
     data_dir="./data",
     batch_size=1,
     learning_rate=1e-5,
@@ -48,6 +50,10 @@ def run_glide_finetune(
     upsample_factor=4,
     image_to_upsample='low_res_face.png',
     inpainting=False,
+    repeats=100,
+    learnable_property='object',
+    center_crop=False,
+    scale_lr=True,
 ):
     if "~" in data_dir:
         data_dir = os.path.expanduser(data_dir)
@@ -56,7 +62,8 @@ def run_glide_finetune(
 
     # Create the checkpoint/output directories
     os.makedirs(checkpoints_dir, exist_ok=True)
-
+    if scale_lr:
+        learning_rate = batch_size*learning_rate
     # Start wandb logging
     wandb_run = wandb_setup(
         batch_size=batch_size,
@@ -83,12 +90,28 @@ def run_glide_finetune(
         activation_checkpointing=activation_checkpointing,
         model_type=model_type,
     )
+    tokenizer = glide_model.tokenizer
+    token_ids = tokenizer.encode(initializer_token)
+    # Check if initializer_token is a single token or a sequence of tokens
+    if len(token_ids) > 1:
+        raise ValueError("The initializer token must be a single token.")
+
+    initializer_token_id = token_ids[0]
+    placeholder_token_id = tokenizer.add_special_token(placeholder_token)
+    glide_model.resize_token_embeddings()
+    glide_model.token_embedding.weight.data[placeholder_token_id] = glide_model.token_embedding.weight.data[initializer_token_id]
     glide_model.train()
     number_of_params = sum(x.numel() for x in glide_model.parameters())
+    glide_model.token_embedding.requires_grad_(True)
+
     print(f"Number of parameters: {number_of_params}")
+    print('Parameters that requires gradient:')
     number_of_trainable_params = sum(
         x.numel() for x in glide_model.parameters() if x.requires_grad
     )
+    for name, param in glide_model.named_parameters():
+        if param.requires_grad:
+            print(name)
     print(f"Trainable parameters: {number_of_trainable_params}")
 
     # Data setup
@@ -115,15 +138,18 @@ def run_glide_finetune(
         )
     else:
         dataset = TextualInversionDataset(
-            folder=data_dir,
+            data_root=data_dir,
+            placeholder_token=placeholder_token,
+            repeats=repeats,
+            learnable_property=learnable_property,
+            center_crop=center_crop,
+            set="train",
             side_x=side_x,
             side_y=side_y,
             resize_ratio=resize_ratio,
             uncond_p=uncond_p,
-            shuffle=True,
             tokenizer=glide_model.tokenizer,
             text_ctx_len=glide_options["text_ctx"],
-            use_captions=use_captions,
             enable_glide_upsample=enable_upsample,
             upscale_factor=upsample_factor,  # TODO: make this a parameter
         )
@@ -138,11 +164,6 @@ def run_glide_finetune(
     )
 
     # Optimizer setup
-    if not freeze_transformer: # if we want to train the transformer, we need to backpropagate through the diffusion model.
-        glide_model.out.requires_grad_(True)
-        glide_model.input_blocks.requires_grad_(True)
-        glide_model.middle_block.requires_grad_(True)
-        glide_model.output_blocks.requires_grad_(True)
 
     optimizer = th.optim.AdamW(
         [x for x in glide_model.parameters() if x.requires_grad],
@@ -173,6 +194,7 @@ def run_glide_finetune(
     for epoch in trange(num_epochs):
         print(f"Starting epoch {epoch}")
         run_glide_finetune_epoch(
+            placeholder_token_id,
             glide_model=glide_model,
             glide_diffusion=glide_diffusion,
             glide_options=glide_options,
@@ -208,13 +230,17 @@ def parse_args():
     parser.add_argument(
         "--initializer_token", type=str, default=None, required=True, help="A token to use as initializer word."
     )
+    parser.add_argument(
+        "--learnable_property", type=str, default="object",help="object of style"
+    )
+    parser.add_argument("--scale_lr", action="store_true")
+
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
     parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
     parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
     parser.add_argument("--data_dir", "-data", type=str, default="./data")
     parser.add_argument("--batch_size", "-bs", type=int, default=1)
-    parser.add_argument("--learning_rate", "-lr", type=float, default=2e-5)
-    parser.add_argument("--adam_weight_decay", "-adam_wd", type=float, default=0.0)
+    parser.add_argument("--learning_rate", "-lr", type=float, default=5e-4)
     parser.add_argument("--side_x", "-x", type=int, default=64)
     parser.add_argument("--side_y", "-y", type=int, default=64)
     parser.add_argument(
@@ -242,13 +268,16 @@ def parse_args():
         help="Checkpoint to resume from",
     )
     parser.add_argument(
+        "--repeats",
+        type=int,
+        default=100,
+    )
+    parser.add_argument(
         "--checkpoints_dir", "-ckpt", type=str, default="./glide_checkpoints/"
     )
     parser.add_argument("--use_fp16", "-fp16", action="store_true")
     parser.add_argument("--device", "-dev", type=str, default="cuda")
     parser.add_argument("--log_frequency", "-freq", type=int, default=100)
-    parser.add_argument("--unfreeze_transformer", "-fz_xt", action="store_false", default=False)
-    parser.add_argument("--unfreeze_diffusion", "-fz_unet", action="store_false", default=False)
     parser.add_argument("--project_name", "-name", type=str, default="glide-finetune")
     parser.add_argument("--activation_checkpointing", "-grad_ckpt", action="store_true")
     parser.add_argument("--use_captions", "-txt", action="store_true")
@@ -320,8 +349,8 @@ def parse_args():
 if __name__ == "__main__":
     # CUDA/CPU setup
     args = parse_args()
-    args.freeze_transformer=not args.unfreeze_transformer
-    args.freeze_diffusion=not args.unfreeze_diffusion
+    args.freeze_transformer=True
+    args.freeze_diffusion=True
 
     if len(args.device) > 0:
         device = th.device(args.device)
@@ -342,6 +371,8 @@ if __name__ == "__main__":
         data_dir = args.data_dir
     
     run_glide_finetune(
+        placeholder_token=args.placeholder_token,
+        initializer_token=args.initializer_token,
         data_dir=args.data_dir,
         batch_size=args.batch_size,
         learning_rate=args.learning_rate,
@@ -370,5 +401,6 @@ if __name__ == "__main__":
         enable_upsample=args.train_upsample,
         upsample_factor=args.upscale_factor,
         image_to_upsample=args.image_to_upsample,
-        inpainting=args.inpainting
+        inpainting=args.inpainting,
+        scale_lr=args.scale_lr
     )

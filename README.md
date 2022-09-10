@@ -2,6 +2,12 @@
 
 The code has been based on https://github.com/afiaka87/glide-finetune
 
+To generate frida pictures, do
+```
+python train_glide.py --use_fp16 --initializer_token="dog" --placeholder_token="<frida>" --test_prompt="A picture of <frida>" --data_dir="./frida" --project_name="frida_generator" --scale_lr --batch_size=4
+
+```
+
 [colab](https://github.com/eliohead/glide-finetune-colab)
 
 Finetune GLIDE-text2im on your own image-text dataset.

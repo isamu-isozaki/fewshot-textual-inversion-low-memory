@@ -75,7 +75,11 @@ class Text2ImUNet(UNetModel):
 
         self.cache_text_emb = cache_text_emb
         self.cache = None
-
+    def resize_token_embeddings(self):
+        resized_embedding = nn.Embedding(self.tokenizer.n_vocab, self.xf_width)
+        prev_size = self.token_embedding.weight.data.shape[0]
+        resized_embedding.weight.data[:prev_size, :] = self.token_embedding.weight.data
+        self.token_embedding = resized_embedding
     def convert_to_fp16(self):
         super().convert_to_fp16()
         if self.xf_width:
@@ -106,8 +110,8 @@ class Text2ImUNet(UNetModel):
         # print('xf_in max min')
         # print(th.max(xf_in), th.min(xf_in))
         if self.xf_padding:
-            assert mask is not None
-            xf_in = th.where(mask[..., None], xf_in, self.padding_embedding[None])
+            if mask is not None:
+                xf_in = th.where(mask[..., None], xf_in, self.padding_embedding[None])
         xf_out = self.transformer(xf_in.to(self.dtype))
         # print('xf_out max min')
         # print(th.max(xf_out), th.min(xf_out))

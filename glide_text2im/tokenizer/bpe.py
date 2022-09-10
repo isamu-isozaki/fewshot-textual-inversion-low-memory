@@ -60,10 +60,11 @@ class Encoder:
         self.byte_decoder = {v: k for k, v in self.byte_encoder.items()}
         self.bpe_ranks = dict(zip(bpe_merges, range(len(bpe_merges))))
         self.cache = {}
-
+        # self.curr_pattern = r"""'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+        self.curr_pattern =r"'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+|[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"
         # Should haved added re.IGNORECASE so BPE merges can happen for capitalized versions of contractions
         self.pat = re.compile(
-            r"""'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+            self.curr_pattern
         )
 
     @property
@@ -82,7 +83,14 @@ class Encoder:
         padded_tokens = tokens + [self.end_token] * padding
         mask = [True] * len(tokens) + [False] * padding
         return padded_tokens, mask
-
+    def add_special_token(self, token):
+        idx = self.n_vocab
+        self.encoder[token] = self.n_vocab
+        self.cache[token] = token
+        self.curr_pattern = fr"{token}|{self.curr_pattern}"
+        self.pat = re.compile(self.curr_pattern)
+        return idx
+        # update merges too
     def bpe(self, token):
         if token in self.cache:
             return self.cache[token]
@@ -91,7 +99,6 @@ class Encoder:
 
         if not pairs:
             return token
-
         while True:
             bigram = min(pairs, key=lambda pair: self.bpe_ranks.get(pair, float("inf")))
             if bigram not in self.bpe_ranks:
@@ -123,7 +130,7 @@ class Encoder:
         word = " ".join(word)
         self.cache[token] = word
         return word
-
+    
     def encode(self, text):
         text = text.lower()
         bpe_tokens = []
