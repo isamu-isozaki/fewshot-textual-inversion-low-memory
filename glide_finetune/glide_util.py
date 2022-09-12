@@ -57,20 +57,7 @@ def load_model(
     if activation_checkpointing:
         glide_model.use_checkpoint = True
 
-    glide_model.requires_grad_(True)
-    if freeze_transformer:
-        glide_model.transformer.requires_grad_(False)
-        glide_model.transformer_proj.requires_grad_(False)
-        glide_model.token_embedding.requires_grad_(False)
-        glide_model.padding_embedding.requires_grad_(False)
-        glide_model.positional_embedding.requires_grad_(False)
-        glide_model.time_embed.requires_grad_(False)
-        glide_model.final_ln.requires_grad_(False)
-    if freeze_diffusion:
-        glide_model.out.requires_grad_(False)
-        glide_model.input_blocks.requires_grad_(False)
-        glide_model.middle_block.requires_grad_(False)
-        glide_model.output_blocks.requires_grad_(False)
+    glide_model.requires_grad_(False)
     if len(glide_path) > 0:  # user provided checkpoint
         assert os.path.exists(glide_path), "glide path does not exist"
         weights = th.load(glide_path, map_location="cpu")
