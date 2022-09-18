@@ -66,26 +66,10 @@ def mean_flat(tensor):
 
 
 def wandb_setup(
-    batch_size: int,
-    side_x: int,
-    side_y: int,
-    learning_rate: float,
-    use_fp16: bool,
-    device: str,
-    data_dir: str,
-    base_dir: str,
+    args: dict,
     project_name: str = "glide-text2im-finetune",
 ):
     return wandb.init(
         project=project_name,
-        config={
-            "batch_size": batch_size,
-            "side_x": side_x,
-            "side_y": side_y,
-            "learning_rate": learning_rate,
-            "use_fp16": use_fp16,
-            "device": device,
-            "data_dir": data_dir,
-            "base_dir": base_dir,
-        },
+        config=args,
     )

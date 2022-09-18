@@ -154,7 +154,10 @@ class TextualInversionDataset(Dataset):
 
         self.num_images = len(self.image_paths)
         self._length = self.num_images
-
+        self.base_transform = A.Compose([
+                A.RandomResizedCrop(self.size, self.size, scale=(resize_ratio, 1), ratio=(1, 1), p=1)
+            ],
+        )
         if set == "train":
             self._length = self.num_images * repeats
 
@@ -184,14 +187,15 @@ class TextualInversionDataset(Dataset):
 
         # default to score-sde preprocessing
         img = np.array(image).astype(np.uint8)
-
-        if self.center_crop:
-            crop = min(img.shape[0], img.shape[1])
-            h, w, = (
-                img.shape[0],
-                img.shape[1],
-            )
-            img = img[(h - crop) // 2 : (h + crop) // 2, (w - crop) // 2 : (w + crop) // 2]
+        transformed = self.base_transform(image=img)
+        img = transformed["image"]
+        # if self.center_crop:
+        #     crop = min(img.shape[0], img.shape[1])
+        #     h, w, = (
+        #         img.shape[0],
+        #         img.shape[1],
+        #     )
+        #     img = img[(h - crop) // 2 : (h + crop) // 2, (w - crop) // 2 : (w + crop) // 2]
 
         image = Image.fromarray(img)
         image = image.resize((self.size, self.size), resample=self.interpolation)
