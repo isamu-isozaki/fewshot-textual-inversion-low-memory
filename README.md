@@ -22,7 +22,7 @@ Finetune GLIDE-text2im on your own image-text dataset.
 ## Installation
 
 ```sh
-git clone https://github.com/afiaka87/glide-finetune.git
+git clone https://github.com/isamu-isozaki/fewshot-textual-inversion-low-memory
 cd glide-finetune/
 python3 -m venv .venv # create a virtual environment to keep global install clean.
 source .venv/bin/activate
