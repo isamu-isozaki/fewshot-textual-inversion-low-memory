@@ -4,10 +4,11 @@ The code has been based on https://github.com/afiaka87/glide-finetune
 
 To generate frida pictures, do
 ```
-python train_glide.py --use_fp16 --initializer_token="dog" --placeholder_token="<frida>" --test_prompt="A picture of <frida>" --data_dir="./frida" --project_name="frida_generator" --scale_lr --batch_size=4
-
+python train_glide.py --use_fp16 --placeholder_token="<frida>" --data_dir="./frida" --project_name="frida_generator" --scale_lr --batch_size=4 --num_vec_per_token=9 --initializer_token="large while and light brownish golden retriever"
 ```
+these provide the most consistent images but using lr 5e-3 produce the best results altho it diverges after that
 
+I haven't tested the upsampling
 [colab](https://github.com/eliohead/glide-finetune-colab)
 
 Finetune GLIDE-text2im on your own image-text dataset.
@@ -27,7 +28,7 @@ This idea was taken from the original textual inversion repository (here)[https:
 ## Installation
 
 ```sh
-git clone https://github.com/afiaka87/glide-finetune.git
+git clone https://github.com/isamu-isozaki/fewshot-textual-inversion-low-memory
 cd glide-finetune/
 python3 -m venv .venv # create a virtual environment to keep global install clean.
 source .venv/bin/activate

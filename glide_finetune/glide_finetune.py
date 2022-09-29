@@ -222,7 +222,7 @@ def run_glide_finetune_epoch(
                 }
             )
             print(f"Saved sample {sample_save_path}")
-        if train_idx % 5000 == 0 and train_idx > 0:
+        if train_idx % 50000 == 0 and train_idx > 0:
             train_util.save_model(glide_model, checkpoints_dir, train_idx, epoch)
             print(
                 f"Saved checkpoint {train_idx} to {checkpoints_dir}/glide-ft-{train_idx}.pt"

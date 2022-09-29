@@ -156,7 +156,10 @@ class TextualInversionDataset(Dataset):
 
         self.num_images = len(self.image_paths)
         self._length = self.num_images
-
+        self.base_transform = A.Compose([
+                A.RandomResizedCrop(self.size, self.size, scale=(resize_ratio, 1), ratio=(1, 1), p=1)
+            ],
+        )
         if set == "train":
             self._length = self.num_images * repeats
         resize_ratio = 0.9

@@ -54,6 +54,8 @@ def run_glide_finetune(
     learnable_property='object',
     center_crop=False,
     scale_lr=True,
+    adam_beta1=0.9,
+    adam_beta2=0.999,
 ):
     if "~" in data_dir:
         data_dir = os.path.expanduser(data_dir)
@@ -65,17 +67,7 @@ def run_glide_finetune(
     if scale_lr:
         learning_rate = batch_size*learning_rate
     # Start wandb logging
-    wandb_run = wandb_setup(
-        batch_size=batch_size,
-        side_x=side_x,
-        side_y=side_y,
-        learning_rate=learning_rate,
-        use_fp16=use_fp16,
-        device=device,
-        data_dir=data_dir,
-        base_dir=checkpoints_dir,
-        project_name=project_name,
-    )
+    wandb_run = wandb_setup(args, project_name)
     print("Wandb setup.")
 
     # Model setup
@@ -162,7 +154,7 @@ def run_glide_finetune(
     if args.use_fp16:
         eps = 1e-4
     optimizer = th.optim.AdamW(
-        [x for x in glide_model.parameters() if x.requires_grad],
+        glide_model.token_embedding.parameters(),
         lr=learning_rate,
         weight_decay=0,
         eps=eps
@@ -418,5 +410,7 @@ if __name__ == "__main__":
         upsample_factor=args.upscale_factor,
         image_to_upsample=args.image_to_upsample,
         inpainting=args.inpainting,
-        scale_lr=args.scale_lr
+        scale_lr=args.scale_lr,
+        adam_beta1=args.adam_beta1,
+        adam_beta2=args.adam_beta2,
     )
