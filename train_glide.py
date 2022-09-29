@@ -10,7 +10,7 @@ import torchvision.transforms as T
 from tqdm import trange
 
 from glide_finetune.glide_finetune import run_glide_finetune_epoch
-from glide_finetune.glide_util import load_model
+from glide_finetune.glide_util import load_model, add_tokens_and_get_placeholder_token
 from glide_finetune.loader import TextualInversionDataset
 from glide_finetune.train_util import wandb_setup
 from glide_finetune.wds_loader import glide_wds_loader
@@ -19,6 +19,7 @@ from glide_finetune.wds_loader import glide_wds_loader
 # from accelerate.utils import set_seed
 
 def run_glide_finetune(
+    args,
     placeholder_token="<cat_toy>",
     initializer_token="toy",
     data_dir="./data",
@@ -40,7 +41,6 @@ def run_glide_finetune(
     use_captions=True,
     num_epochs=100,
     log_frequency=100,
-    test_prompt="a group of skiers are preparing to ski down a mountain.",
     sample_bs=1,
     sample_gs=8.0,
     use_webdataset=False,
@@ -92,14 +92,8 @@ def run_glide_finetune(
     )
     tokenizer = glide_model.tokenizer
     token_ids = tokenizer.encode(initializer_token)
-    # Check if initializer_token is a single token or a sequence of tokens
-    if len(token_ids) > 1:
-        raise ValueError("The initializer token must be a single token.")
-
-    initializer_token_id = token_ids[0]
-    placeholder_token_id = tokenizer.add_special_token(placeholder_token)
-    glide_model.resize_token_embeddings()
-    glide_model.token_embedding.weight.data[placeholder_token_id] = glide_model.token_embedding.weight.data[initializer_token_id]
+    print(f"number of tokens: {len(token_ids)}")
+    placeholder_token, placeholder_token_ids = add_tokens_and_get_placeholder_token(args, token_ids, tokenizer, glide_model)
     glide_model.train()
     number_of_params = sum(x.numel() for x in glide_model.parameters())
     glide_model.token_embedding.requires_grad_(True)
@@ -164,12 +158,14 @@ def run_glide_finetune(
     )
 
     # Optimizer setup
-
+    eps = 1e-8
+    if args.use_fp16:
+        eps = 1e-4
     optimizer = th.optim.AdamW(
         [x for x in glide_model.parameters() if x.requires_grad],
         lr=learning_rate,
-        weight_decay=adam_weight_decay,
-        eps=1e-4
+        weight_decay=0,
+        eps=eps
     )
 
 
@@ -190,17 +186,21 @@ def run_glide_finetune(
     current_run_ckpt_dir = os.path.join(checkpoints_dir, str(next_run).zfill(4))
 
     os.makedirs(current_run_ckpt_dir, exist_ok=True)
+    prompt = f"A picture of {placeholder_token}"
+    if learnable_property != "object":
+        prompt = f"A painting in a style of {placeholder_token}"
 
     for epoch in trange(num_epochs):
         print(f"Starting epoch {epoch}")
         run_glide_finetune_epoch(
-            placeholder_token_id,
+            args,
+            placeholder_token_ids,
             glide_model=glide_model,
             glide_diffusion=glide_diffusion,
             glide_options=glide_options,
             optimizer=optimizer,
             dataloader=dataloader,
-            prompt=test_prompt,
+            prompt=prompt,
             sample_bs=sample_bs,
             sample_gs=sample_gs,
             checkpoints_dir=current_run_ckpt_dir,
@@ -214,12 +214,32 @@ def run_glide_finetune(
             gradient_accumualation_steps=1,
             train_upsample=enable_upsample,
             inpainting=inpainting,
+            learning_rate=learning_rate
         )
 
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--num_vec_per_token",
+        type=int,
+        default=1,
+        help=(
+            "The number of vectors used to represent the placeholder token. The higher the number, the better the"
+            " result at the cost of editability. This can be fixed by prompt editing."
+        ),
+    )
+    parser.add_argument(
+        "--guess_initializer_token",
+        action="store_true",
+        help="Guess the string the represent the concept using blip.",
+    )
+    parser.add_argument(
+        "--initialize_rest_random",
+        action="store_true",
+        help="Initialize rest of the placeholder tokens with random.",
+    )
     parser.add_argument(
         "--placeholder_token",
         type=str,
@@ -239,6 +259,8 @@ def parse_args():
     parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
     parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
     parser.add_argument("--data_dir", "-data", type=str, default="./data")
+    parser.add_argument("--data_aug",  action="store_true")
+
     parser.add_argument("--batch_size", "-bs", type=int, default=1)
     parser.add_argument("--learning_rate", "-lr", type=float, default=5e-4)
     parser.add_argument("--side_x", "-x", type=int, default=64)
@@ -282,12 +304,6 @@ def parse_args():
     parser.add_argument("--activation_checkpointing", "-grad_ckpt", action="store_true")
     parser.add_argument("--use_captions", "-txt", action="store_true")
     parser.add_argument("--epochs", "-epochs", type=int, default=20)
-    parser.add_argument(
-        "--test_prompt",
-        "-prompt",
-        type=str,
-        default="a group of skiers are preparing to ski down a mountain.",
-    )
     parser.add_argument(
         "--test_batch_size",
         "-tbs",
@@ -371,6 +387,7 @@ if __name__ == "__main__":
         data_dir = args.data_dir
     
     run_glide_finetune(
+        args,
         placeholder_token=args.placeholder_token,
         initializer_token=args.initializer_token,
         data_dir=args.data_dir,
@@ -392,7 +409,6 @@ if __name__ == "__main__":
         activation_checkpointing=args.activation_checkpointing,
         use_captions=args.use_captions,
         num_epochs=args.epochs,
-        test_prompt=args.test_prompt,
         sample_bs=args.test_batch_size,
         sample_gs=args.test_guidance_scale,
         use_webdataset=args.use_webdataset,

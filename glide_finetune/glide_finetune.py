@@ -1,5 +1,6 @@
 import os
 from typing import Tuple
+from cv2 import inpaint
 
 import torch as th
 from glide_text2im.respace import SpacedDiffusion
@@ -83,14 +84,14 @@ def upsample_train_step(
         Returns:
             The loss.
     """
-    tokens, masks, low_res_image, high_res_image, high_res_mask = [ x.to(device) for x in batch ]
-    if not(high_res_mask is None):
-        inpainting = True
+    tokens, masks, high_res_image, low_res_image = [ x.to(device) for x in batch ]
+    high_res_mask = None
+    inpainting = not(high_res_mask is None)
     timesteps = th.randint(0, len(glide_diffusion.betas) - 1, (low_res_image.shape[0],), device=device)
     noise = th.randn_like(high_res_image, device=device) # Noise should be shape of output i think
     noised_high_res_image = glide_diffusion.q_sample(high_res_image, timesteps, noise=noise).to(device)
     _, C = noised_high_res_image.shape[:2]
-    if inpainting:
+    if not inpainting:
         model_output = glide_model(
             noised_high_res_image.to(device),
             timesteps.to(device),
@@ -111,7 +112,8 @@ def upsample_train_step(
 
 
 def run_glide_finetune_epoch(
-    placeholder_token_id,
+    args,
+    placeholder_token_ids,
     glide_model: Text2ImUNet,
     glide_diffusion: SpacedDiffusion,
     glide_options: dict,
@@ -134,6 +136,7 @@ def run_glide_finetune_epoch(
     upsample_factor=4,
     image_to_upsample='low_res_face.png',
     inpainting=False,
+    learning_rate=5e-4
 ):
     if train_upsample: train_step = upsample_train_step
     else: train_step = base_train_step
@@ -155,8 +158,16 @@ def run_glide_finetune_epoch(
         accumulated_loss.backward()
         grads = glide_model.token_embedding.weight.grad
         # Get the index for tokens that we want to zero the grads for
-        index_grads_to_zero = th.arange(glide_model.tokenizer.n_vocab) != placeholder_token_id
-        grads.data[index_grads_to_zero, :] = grads.data[index_grads_to_zero, :].fill_(0)
+        grad_mask = th.arange(glide_model.tokenizer.n_vocab) != placeholder_token_ids[0]
+        for i in range(1, len(placeholder_token_ids)):
+            grad_mask = grad_mask & (th.arange(glide_model.tokenizer.n_vocab) != placeholder_token_ids[i])
+        grads.data[grad_mask, :] = grads.data[grad_mask, :].fill_(0)
+        with th.no_grad():
+            glide_model.token_embedding.weight.data[~grad_mask, :] -= (
+                learning_rate
+                * args.adam_weight_decay
+                * glide_model.token_embedding.weight.data[~grad_mask, :]
+            )
         optimizer.step()
         gc.collect()
         glide_model.zero_grad()

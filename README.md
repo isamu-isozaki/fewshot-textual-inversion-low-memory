@@ -16,6 +16,12 @@ Finetune GLIDE-text2im on your own image-text dataset.
 
 - finetune the upscaler as well.
 - drop-in support for laion and alamy.
+## Modifications
+This repository is made so that training can be done in 6gb. To accomplish this, the glide model in use_fp16 mode was adapted to work with textual inversion/
+
+Additional changes:
+- Added support for having multiple tokens represent the concept. This works as so: given a placeholder token frida, in place of where frida was it'll place frida_1 frida_2 ... frida_n where n is the number of vectors we want to use to represent the concept(num_vec_per_token). For example, "A picture of frida" becomes "A picture of frida_1 frida_2 ... frida_n"
+This idea was taken from the original textual inversion repository (here)[https://github.com/rinongal/textual_inversion]. Will detail how this works with initializing words later.
 
 
 ## Installation

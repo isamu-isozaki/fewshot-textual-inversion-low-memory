@@ -135,6 +135,7 @@ class TextualInversionDataset(Dataset):
         uncond_p=0.0,
         enable_glide_upsample=False,
         upscale_factor=4,
+        data_aug=False,
     ):
 
         self.data_root = data_root
@@ -149,6 +150,7 @@ class TextualInversionDataset(Dataset):
         self.placeholder_token = placeholder_token
         self.center_crop = center_crop
         self.flip_p = flip_p
+        self.data_aug = data_aug
 
         self.image_paths = [os.path.join(self.data_root, file_path) for file_path in os.listdir(self.data_root)]
 
@@ -157,7 +159,19 @@ class TextualInversionDataset(Dataset):
 
         if set == "train":
             self._length = self.num_images * repeats
-
+        resize_ratio = 0.9
+        self.base_transform = A.Compose(
+            [
+                A.Rotate(p=0.5, limit=10, crop_border=True),
+                A.RandomResizedCrop(self.size, self.size, scale=(resize_ratio, 1), ratio=(1, 1), p=0.5)
+            ],
+        )
+        self.conditional_noise = A.Compose(
+            [
+                A.GaussNoise(p=0.5),
+                A.Blur(blur_limit=3, p=0.5),
+            ]
+        )
         self.interpolation = {
             "linear": PIL.Image.LINEAR,
             "bilinear": PIL.Image.BILINEAR,
@@ -184,7 +198,9 @@ class TextualInversionDataset(Dataset):
 
         # default to score-sde preprocessing
         img = np.array(image).astype(np.uint8)
-
+        if self.data_aug:
+            transformed = self.base_transform(image=img)
+            img = transformed["image"]
         if self.center_crop:
             crop = min(img.shape[0], img.shape[1])
             h, w, = (
@@ -199,7 +215,9 @@ class TextualInversionDataset(Dataset):
         image = self.flip_transform(image)
         image = np.array(image).astype(np.uint8)
         if self.enable_glide_upsample:
+            # conditional augmentation for base image https://arxiv.org/pdf/2106.15282.pdf
             base_image = image.resize((self.side_x, self.side_y), resample=self.interpolation)
+            base_image = self.conditional_noise(np.array(base_image))['image']
             base_image = (base_image / 127.5 - 1.0).astype(np.float32)
             example["base_img"] = th.from_numpy(base_image).permute(2, 0, 1)
         image = (image / 127.5 - 1.0).astype(np.float32)

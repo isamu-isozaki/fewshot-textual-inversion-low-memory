@@ -18,6 +18,33 @@ from glide_text2im.model_creation import (
 from glide_text2im.tokenizer.bpe import Encoder
 MODEL_TYPES = ["base", "upsample", "base-inpaint", "upsample-inpaint"]
 
+def add_tokens_and_get_placeholder_token(args, token_ids, tokenizer, glide_model):
+    assert args.num_vec_per_token >= len(token_ids)
+    placeholder_tokens = [f"{args.placeholder_token}_{i}" for i in range(args.num_vec_per_token)]
+
+    for placeholder_token in placeholder_tokens:
+        num_added_tokens = tokenizer.add_special_token(placeholder_token)
+        if num_added_tokens == 0:
+            raise ValueError(
+                f"The tokenizer already contains the token {placeholder_token}. Please pass a different"
+                " `placeholder_token` that is not already in the tokenizer."
+            )
+    placeholder_token = " ".join(placeholder_tokens)
+    placeholder_token_ids = tokenizer.encode(placeholder_token)
+    print(f"The placeholder tokens are {placeholder_token} while the ids are {placeholder_token_ids}")
+    glide_model.resize_token_embeddings()
+    token_embeds = glide_model.token_embedding.weight.data
+    if args.initialize_rest_random:
+        # The idea is that the placeholder tokens form adjectives as in x x x white dog.
+        for i, placeholder_token_id in enumerate(placeholder_token_ids):
+            if len(placeholder_token_ids) - i < len(token_ids):
+                token_embeds[placeholder_token_id] = token_embeds[token_ids[i % len(token_ids)]]
+            else:
+                token_embeds[placeholder_token_id] = th.rand_like(token_embeds[placeholder_token_id])
+    else:
+        for i, placeholder_token_id in enumerate(placeholder_token_ids):
+            token_embeds[placeholder_token_id] = token_embeds[token_ids[i % len(token_ids)]]
+    return placeholder_token, placeholder_token_ids
 
 def get_uncond_tokens_mask(tokenizer: Encoder):
     uncond_tokens, uncond_mask = tokenizer.padded_tokens_and_mask([], 128)
