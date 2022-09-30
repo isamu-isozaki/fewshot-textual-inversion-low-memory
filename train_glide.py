@@ -86,6 +86,8 @@ def run_glide_finetune(
     token_ids = tokenizer.encode(initializer_token)
     print(f"number of tokens: {len(token_ids)}")
     placeholder_token, placeholder_token_ids = add_tokens_and_get_placeholder_token(args, token_ids, tokenizer, glide_model)
+    if args.subject_noun:
+        placeholder_token = f"{placeholder_token} {args.subject_noun}"
     glide_model.train()
     number_of_params = sum(x.numel() for x in glide_model.parameters())
     glide_model.token_embedding.requires_grad_(True)
@@ -213,6 +215,14 @@ def run_glide_finetune(
 
 def parse_args():
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--subject_noun",
+        type=str,
+        default=None,
+        help=(
+            "Inspired by dream booth. Make the model guess the identifier in the form [identifier] subject noun"
+        ),
+    )
     parser.add_argument(
         "--num_vec_per_token",
         type=int,
