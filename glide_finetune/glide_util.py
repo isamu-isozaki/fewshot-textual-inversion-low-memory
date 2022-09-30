@@ -34,7 +34,11 @@ def add_tokens_and_get_placeholder_token(args, token_ids, tokenizer, glide_model
     print(f"The placeholder tokens are {placeholder_token} while the ids are {placeholder_token_ids}")
     glide_model.resize_token_embeddings()
     token_embeds = glide_model.token_embedding.weight.data
-    if args.initialize_rest_random:
+    if args.subject_noun:
+        # Initialize them to be random
+        for i, placeholder_token_id in enumerate(placeholder_token_ids):
+            token_embeds[placeholder_token_id] = th.rand_like(token_embeds[placeholder_token_id])
+    elif args.initialize_rest_random:
         # The idea is that the placeholder tokens form adjectives as in x x x white dog.
         for i, placeholder_token_id in enumerate(placeholder_token_ids):
             if len(placeholder_token_ids) - i < len(token_ids):
